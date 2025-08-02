@@ -7,10 +7,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Montserrat', sans-serif; margin: 0; padding: 0; background: linear-gradient(135deg, #f5f7fa, #c3cfe2); }
-    nav { background-color: #2c2c2c; padding: 10px; text-align: center; }
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      z-index: 1000; background-color: #2c2c2c; padding: 10px; text-align: center; }
     nav button { background-color: #f4f4f4; border: none; padding: 10px 20px; margin: 0 5px; cursor: pointer; font-weight: bold; border-radius: 5px; transition: background-color 0.3s ease; }
     nav button:hover { background-color: #ddd; }
-    section { display: none; padding: 20px; }
+    section { display: none; margin-top: 70px; padding: 20px; }
     section.active { display: block; background-color: white; margin: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
     h1 { text-align: center; color: #333; }
     table { width: 100%; border-collapse: collapse; }
@@ -26,13 +31,6 @@
   </style>
 </head>
 <body>
-  <nav>
-    <button onclick="showTab('puntajes')">Resumen de Puntajes</button>
-    <button onclick="requestAccess('registro')">Registro de Faltas</button>
-    <button onclick="requestAccess('admin')">Historial (Admin)</button>
-    <button onclick="logout()">Cerrar sesión</button>
-  </nav>
-
   <section id="puntajes" class="active">
     <h1>Resumen de Puntajes</h1>
     <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; margin-bottom: 20px;">
@@ -81,7 +79,7 @@
     <h1>Historial de Faltas</h1>
     <table id="tablaHistorial">
       <thead>
-        <tr><th>Fecha</th><th>Alumno</th><th>Falta</th><th>Puntos</th><th>Observaciones</th></tr>
+        <tr><th>Fecha</th><th>Alumno</th><th>Falta</th><th>Puntos</th><th>Observaciones</th><th>Acciones</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -93,6 +91,13 @@
     <br>
     <button onclick="validatePassword()">Acceder</button>
   </div>
+
+  <nav>
+    <button onclick="showTab('puntajes')">Resumen de Puntajes</button>
+    <button onclick="requestAccess('registro')">Registro de Faltas</button>
+    <button onclick="requestAccess('admin')">Historial (Admin)</button>
+    <button onclick="logout()">Cerrar sesión</button>
+  </nav>
 
   <script>
     const alumnos = ["Areli Flores Salinas", "Emilia Cárdenas Navarro", "Jose Raymundo Rivas Colin", "Juan Carlos Nuñez", "Ana Belén Ortiz Villeda", "Renzo Luces", "Milton Fabricio Aguirre Duarte", "Triana Huerta Torres Landa", "Mariana Piñera Barreda", "Bárbara Sánchez", "Luis Pablo Perez Torrescano", "Ximena Carrero", "Alexia Alvarez Medina", "Fernando Roman Geronimo", "Danae Jasel Botello Lopez", "Gabriela Lozano Pedroza", "Karla Lizbeth Pérez Morales", "Zeltzin Citlali Feregrino Velázquez", "Edgar Iván Lugo Meza", "Diego Ramirez Torres", "Victoria Martinez"];
@@ -120,7 +125,7 @@
     }
 
     function requestAccess(tab) {
-      if (isAdmin || tab === 'registro') {
+      if (isAdmin) {
         showTab(tab);
       } else {
         protectedTab = tab;
@@ -148,6 +153,7 @@
 
     function registrarFalta(event) {
       event.preventDefault();
+      
       const alumno = document.getElementById("alumno").value;
       const falta = document.getElementById("falta").value;
       const observaciones = document.getElementById("observaciones").value;
@@ -206,7 +212,10 @@
       tbody.innerHTML = "";
       historial.forEach(reg => {
         const row = document.createElement("tr");
-        row.innerHTML = `<td>${reg.fecha}</td><td>${reg.alumno}</td><td>${reg.falta}</td><td>${reg.puntos}</td><td>${reg.observaciones}</td>`;
+        const index = historial.indexOf(reg);
+        const editarBtn = `<button onclick=\"editarRegistro(${index})\">✏️</button>`;
+        const eliminarBtn = `<button onclick=\"eliminarRegistro(${index})\">🗑️</button>`;
+        row.innerHTML = `<td>${reg.fecha}</td><td>${reg.alumno}</td><td>${reg.falta}</td><td>${reg.puntos}</td><td>${reg.observaciones}</td><td>${editarBtn} ${eliminarBtn}</td>`;
         tbody.appendChild(row);
       });
     }
@@ -220,6 +229,31 @@
     });
 
     renderPuntajes();
-  </script>
+      function editarRegistro(index) {
+      const reg = historial[index];
+      document.getElementById("fecha").value = new Date(reg.fecha).toISOString().split('T')[0];
+      document.getElementById("alumno").value = reg.alumno;
+      document.getElementById("falta").value = reg.falta;
+      document.getElementById("observaciones").value = reg.observaciones;
+      historial.splice(index, 1);
+      puntajes[reg.alumno] += Math.abs(reg.puntos);
+      localStorage.setItem("historial", JSON.stringify(historial));
+      localStorage.setItem("puntajes", JSON.stringify(puntajes));
+      renderHistorial();
+      renderPuntajes();
+    }
+
+    function eliminarRegistro(index) {
+      if (confirm("¿Estás seguro de que deseas eliminar este registro?")) {
+        const reg = historial[index];
+        puntajes[reg.alumno] += Math.abs(reg.puntos);
+        historial.splice(index, 1);
+        localStorage.setItem("historial", JSON.stringify(historial));
+        localStorage.setItem("puntajes", JSON.stringify(puntajes));
+        renderHistorial();
+        renderPuntajes();
+      }
+    }
+</script>
 </body>
 </html>
