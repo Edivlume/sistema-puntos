@@ -99,7 +99,11 @@
     <button onclick="logout()">Cerrar sesión</button>
   </nav>
 
-  <script>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js';
+import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js';
+
     const alumnos = ["Areli Flores Salinas", "Emilia Cárdenas Navarro", "Jose Raymundo Rivas Colin", "Juan Carlos Nuñez", "Ana Belén Ortiz Villeda", "Renzo Luces", "Milton Fabricio Aguirre Duarte", "Triana Huerta Torres Landa", "Mariana Piñera Barreda", "Bárbara Sánchez", "Luis Pablo Perez Torrescano", "Ximena Carrero", "Fernando Roman Geronimo", "Danae Jasel Botello Lopez", "Gabriela Lozano Pedroza", "Karla Lizbeth Pérez Morales", "Zeltzin Citlali Feregrino Velázquez", "Edgar Iván Lugo Meza", "Diego Ramirez Torres", "Victoria Martinez"];
     const faltas = {
       "No saber trazo montado y grabado (reincidente)": 3,
@@ -108,41 +112,79 @@
       "Falta sin aviso previo": 3
     };
 
-// --- Persistencia correcta ---
-// 1) Puntajes por defecto (10 c/u)
-const defaultPuntajes = alumnos.reduce((acc, nombre) => {
-  acc[nombre] = 10; 
-  return acc;
-}, {});
+// === Firebase (integración) ===
 
-// 2) Cargar desde localStorage SIN sobreescribir si ya existe
-let puntajes = JSON.parse(localStorage.getItem("puntajes")) || { ...defaultPuntajes };
-let historial = JSON.parse(localStorage.getItem("historial")) || [];
+// 1) Configuración (la pegaremos en el siguiente paso)
+const firebaseConfig = {
+  apiKey: "AIzaSyDNXoUT2QDtrHJNbrMAQMIPZ5IIaAKjdsw",
+  authDomain: "sistema-de-puntos-ba2f9.firebaseapp.com",
+  projectId: "sistema-de-puntos-ba2f9",
+  storageBucket: "sistema-de-puntos-ba2f9.firebasestorage.app",
+  messagingSenderId: "267134069783",
+  appId: "1:267134069783:web:f95231a04e6189820fc052"
+};
 
-// 3) Sincronizar si cambia la lista de alumnos
+// 2) Arranque + auth anónima
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+await signInAnonymously(auth);
+
+// 3) Firestore + refs
+const db = getFirestore(app);
+const GRUPO_ID = 'default'; // luego podemos usar ?g=... en la URL
+const puntajesRef  = doc(db, 'grupos', GRUPO_ID, 'datos', 'puntajes');
+const historialRef = doc(db, 'grupos', GRUPO_ID, 'datos', 'historial');
+
+// 4) Estado en memoria + defaults (se mantiene igual que antes)
+const defaultPuntajes = alumnos.reduce((acc, nombre) => (acc[nombre] = 10, acc), {});
+let puntajes  = JSON.parse(localStorage.getItem('puntajes'))  || { ...defaultPuntajes };
+let historial = JSON.parse(localStorage.getItem('historial')) || [];
+
+// Sincroniza con lista de alumnos (por si cambian)
 let changed = false;
-alumnos.forEach(nombre => {
-  if (!(nombre in puntajes)) { 
-    puntajes[nombre] = 10; 
-    changed = true; 
-  }
-});
-Object.keys(puntajes).forEach(nombre => {
-  if (!alumnos.includes(nombre)) { 
-    delete puntajes[nombre]; 
-    changed = true; 
-  }
-});
+alumnos.forEach(nombre => { if (!(nombre in puntajes)) { puntajes[nombre] = 10; changed = true; } });
+Object.keys(puntajes).forEach(nombre => { if (!alumnos.includes(nombre)) { delete puntajes[nombre]; changed = true; } });
 
-// 4) Guardar solo si es la primera vez o hubo cambios estructurales
-if (!localStorage.getItem("puntajes") || changed) {
-  localStorage.setItem("puntajes", JSON.stringify(puntajes));
-}
-if (!localStorage.getItem("historial")) {
-  localStorage.setItem("historial", JSON.stringify(historial));
+// 5) Carga inicial desde Firestore (si no existe, siembra con local)
+{
+  const [pSnap, hSnap] = await Promise.all([getDoc(puntajesRef), getDoc(historialRef)]);
+
+  if (pSnap.exists()) puntajes  = pSnap.data();
+  else await setDoc(puntajesRef, puntajes);
+
+  if (hSnap.exists()) historial = hSnap.data().items || [];
+  else await setDoc(historialRef, { items: historial });
+
+  // cache local y primer render
+  localStorage.setItem('puntajes', JSON.stringify(puntajes));
+  localStorage.setItem('historial', JSON.stringify(historial));
+  renderPuntajes();
 }
 
-    let isAdmin = false;
+// 6) Escucha en tiempo real
+onSnapshot(puntajesRef, (snap) => {
+  if (!snap.exists()) return;
+  puntajes = snap.data();
+  localStorage.setItem('puntajes', JSON.stringify(puntajes));
+  renderPuntajes();
+});
+
+onSnapshot(historialRef, (snap) => {
+  if (!snap.exists()) return;
+  historial = snap.data().items || [];
+  localStorage.setItem('historial', JSON.stringify(historial));
+  if (typeof renderHistorial === 'function') renderHistorial();
+});
+
+// 7) Funciones para guardar (las usaremos en tus handlers)
+async function guardarPuntajes() {
+  await setDoc(puntajesRef, puntajes, { merge: true });
+}
+async function pushHistorial(entry) {
+  historial.push(entry);
+  await setDoc(historialRef, { items: historial }, { merge: true });
+}
+
     let protectedTab = null;
 
     function showTab(tabId) {
@@ -181,24 +223,24 @@ if (!localStorage.getItem("historial")) {
     }
 
     function registrarFalta(event) {
-      event.preventDefault();
-      
-      const alumno = document.getElementById("alumno").value;
-      const falta = document.getElementById("falta").value;
-      const observaciones = document.getElementById("observaciones").value;
-      const puntos = faltas[falta];
-      const fechaInput = document.getElementById("fecha").value;
-      const fecha = fechaInput ? new Date(fechaInput).toLocaleDateString() : new Date().toLocaleDateString();
+  event.preventDefault();
 
-      puntajes[alumno] -= puntos;
-      historial.push({ fecha, alumno, falta, puntos: -puntos, observaciones });
+  const alumno = document.getElementById("alumno").value;
+  const falta = document.getElementById("falta").value;
+  const observaciones = document.getElementById("observaciones").value;
+  const puntos = faltas[falta];
+  const fechaInput = document.getElementById("fecha").value;
+  const fecha = fechaInput ? new Date(fechaInput).toLocaleDateString() : new Date().toLocaleDateString();
 
-      localStorage.setItem("puntajes", JSON.stringify(puntajes));
-      localStorage.setItem("historial", JSON.stringify(historial));
+  // actualiza en memoria
+  puntajes[alumno] -= puntos;
+  // guarda en nube
+  guardarPuntajes();
+  pushHistorial({ fecha, alumno, falta, puntos: -puntos, observaciones });
 
-      document.querySelector("form").reset();
-      alert("Falta registrada con éxito");
-    }
+  document.querySelector("form").reset();
+  alert("Falta registrada con éxito");
+}
 
     function renderPuntajes() {
       const tbody = document.querySelector("#tablaPuntajes tbody");
@@ -257,32 +299,44 @@ if (!localStorage.getItem("historial")) {
       selectAlumno.appendChild(opt);
     });
 
-    renderPuntajes();
-      function editarRegistro(index) {
-      const reg = historial[index];
-      document.getElementById("fecha").value = new Date(reg.fecha).toISOString().split('T')[0];
-      document.getElementById("alumno").value = reg.alumno;
-      document.getElementById("falta").value = reg.falta;
-      document.getElementById("observaciones").value = reg.observaciones;
-      historial.splice(index, 1);
-      puntajes[reg.alumno] += Math.abs(reg.puntos);
-      localStorage.setItem("historial", JSON.stringify(historial));
-      localStorage.setItem("puntajes", JSON.stringify(puntajes));
-      renderHistorial();
-      renderPuntajes();
-    }
+function editarRegistro(index) {
+  const reg = historial[index];
 
-    function eliminarRegistro(index) {
-      if (confirm("¿Estás seguro de que deseas eliminar este registro?")) {
-        const reg = historial[index];
-        puntajes[reg.alumno] += Math.abs(reg.puntos);
-        historial.splice(index, 1);
-        localStorage.setItem("historial", JSON.stringify(historial));
-        localStorage.setItem("puntajes", JSON.stringify(puntajes));
-        renderHistorial();
-        renderPuntajes();
-      }
-    }
+  // repone valores en el formulario
+  const iso = new Date(reg.fecha).toISOString().split('T')[0];
+  document.getElementById("fecha").value = iso;
+  document.getElementById("alumno").value = reg.alumno;
+  document.getElementById("falta").value = reg.falta;
+  document.getElementById("observaciones").value = reg.observaciones;
+
+  // revertir efecto del registro en memoria
+  puntajes[reg.alumno] += Math.abs(reg.puntos);
+  historial.splice(index, 1);
+
+  // guardar en nube
+  guardarPuntajes();
+  setDoc(historialRef, { items: historial }, { merge: true });
+
+  renderHistorial();
+  renderPuntajes();
+}
+
+function eliminarRegistro(index) {
+  if (!confirm("¿Estás seguro de que deseas eliminar este registro?")) return;
+
+  const reg = historial[index];
+  // revertir puntaje en memoria
+  puntajes[reg.alumno] += Math.abs(reg.puntos);
+  historial.splice(index, 1);
+
+  // guardar en nube
+  guardarPuntajes();
+  setDoc(historialRef, { items: historial }, { merge: true });
+
+  renderHistorial();
+  renderPuntajes();
+}
+
 </script>
 </body>
 </html>
