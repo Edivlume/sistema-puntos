@@ -100,7 +100,7 @@
   </nav>
 
   <script>
-    const alumnos = ["Areli Flores Salinas", "Emilia Cárdenas Navarro", "Jose Raymundo Rivas Colin", "Juan Carlos Nuñez", "Ana Belén Ortiz Villeda", "Renzo Luces", "Milton Fabricio Aguirre Duarte", "Triana Huerta Torres Landa", "Mariana Piñera Barreda", "Bárbara Sánchez", "Luis Pablo Perez Torrescano", "Ximena Carrero", "Alexia Alvarez Medina", "Fernando Roman Geronimo", "Danae Jasel Botello Lopez", "Gabriela Lozano Pedroza", "Karla Lizbeth Pérez Morales", "Zeltzin Citlali Feregrino Velázquez", "Edgar Iván Lugo Meza", "Diego Ramirez Torres", "Victoria Martinez"];
+    const alumnos = ["Areli Flores Salinas", "Emilia Cárdenas Navarro", "Jose Raymundo Rivas Colin", "Juan Carlos Nuñez", "Ana Belén Ortiz Villeda", "Renzo Luces", "Milton Fabricio Aguirre Duarte", "Triana Huerta Torres Landa", "Mariana Piñera Barreda", "Bárbara Sánchez", "Luis Pablo Perez Torrescano", "Ximena Carrero", "Fernando Roman Geronimo", "Danae Jasel Botello Lopez", "Gabriela Lozano Pedroza", "Karla Lizbeth Pérez Morales", "Zeltzin Citlali Feregrino Velázquez", "Edgar Iván Lugo Meza", "Diego Ramirez Torres", "Victoria Martinez"];
     const faltas = {
       "No saber trazo montado y grabado (reincidente)": 3,
       "Retardo (tolerancia 15 min)": 1,
@@ -108,11 +108,40 @@
       "Falta sin aviso previo": 3
     };
 
-    let puntajes = {};
-    alumnos.forEach(nombre => { puntajes[nombre] = 10; });
-    localStorage.setItem("puntajes", JSON.stringify(puntajes));
-    let historial = [];
-    localStorage.setItem("historial", JSON.stringify(historial));
+// --- Persistencia correcta ---
+// 1) Puntajes por defecto (10 c/u)
+const defaultPuntajes = alumnos.reduce((acc, nombre) => {
+  acc[nombre] = 10; 
+  return acc;
+}, {});
+
+// 2) Cargar desde localStorage SIN sobreescribir si ya existe
+let puntajes = JSON.parse(localStorage.getItem("puntajes")) || { ...defaultPuntajes };
+let historial = JSON.parse(localStorage.getItem("historial")) || [];
+
+// 3) Sincronizar si cambia la lista de alumnos
+let changed = false;
+alumnos.forEach(nombre => {
+  if (!(nombre in puntajes)) { 
+    puntajes[nombre] = 10; 
+    changed = true; 
+  }
+});
+Object.keys(puntajes).forEach(nombre => {
+  if (!alumnos.includes(nombre)) { 
+    delete puntajes[nombre]; 
+    changed = true; 
+  }
+});
+
+// 4) Guardar solo si es la primera vez o hubo cambios estructurales
+if (!localStorage.getItem("puntajes") || changed) {
+  localStorage.setItem("puntajes", JSON.stringify(puntajes));
+}
+if (!localStorage.getItem("historial")) {
+  localStorage.setItem("historial", JSON.stringify(historial));
+}
+
     let isAdmin = false;
     let protectedTab = null;
 
