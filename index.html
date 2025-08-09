@@ -113,7 +113,7 @@
       selectAlumno.appendChild(opt);
     });
 
-    // Estado UI/Admin
+    // ====== Estado UI/Admin ======
     let isAdmin = false;
     let protectedTab = null;
 
@@ -125,16 +125,24 @@
       if (tabId === "admin") renderHistorial();
     }
     function requestAccess(tab) {
-      if (isAdmin) { showTab(tab); }
-      else { protectedTab = tab; document.getElementById("passwordPrompt").style.display = "block"; }
+      if (isAdmin) {
+        showTab(tab);
+      } else {
+        protectedTab = tab;
+        document.getElementById("passwordPrompt").style.display = "block";
+        // lleva la vista al prompt para que no quede oculto bajo la barra
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     }
     function validatePassword() {
       const input = document.getElementById("adminPassword").value;
       if (input === "admin123") {
         isAdmin = true;
         document.getElementById("adminPassword").value = "";
-        showTab(protectedTab);
-      } else { alert("Contraseña incorrecta"); }
+        showTab(protectedTab || "admin");
+      } else {
+        alert("Contraseña incorrecta");
+      }
     }
     function logout() {
       isAdmin = false;
@@ -143,12 +151,17 @@
       alert("Sesión cerrada.");
     }
 
+    // Exponer funciones usadas por atributos HTML
+    window.showTab = showTab;
+    window.requestAccess = requestAccess;
+    window.validatePassword = validatePassword;
+    window.logout = logout;
+
     // ====== Firebase + Firestore ======
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js';
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js';
     import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js';
 
-    // Config (ajústala a la tuya)
     const firebaseConfig = {
       apiKey: "AIzaSyDNXoUT2QDtrHJNbrMAQMIPZ5IIaAKjdsw",
       authDomain: "sistema-de-puntos-ba2f9.firebaseapp.com",
@@ -158,12 +171,10 @@
       appId: "1:267134069783:web:f95231a04e6189820fc052"
     };
 
-    // Variables compartidas en el módulo
     let puntajes = {};
     let historial = [];
     let docRef;
 
-    // Arranque aislado para poder usar await
     (async () => {
       const app = initializeApp(firebaseConfig);
       const auth = getAuth(app);
@@ -179,7 +190,6 @@
         puntajes = data.puntajes || {};
         historial = data.historial || [];
       } else {
-        // Sembrar con 10 puntos por alumno
         puntajes = alumnos.reduce((acc, n) => (acc[n] = 10, acc), {});
         historial = [];
         await setDoc(docRef, { puntajes, historial });
@@ -191,11 +201,9 @@
       Object.keys(puntajes).forEach(n => { if (!alumnos.includes(n)) { delete puntajes[n]; changed = true; } });
       if (changed) await setDoc(docRef, { puntajes }, { merge: true });
 
-      // Primer render
       renderPuntajes();
       renderHistorial();
 
-      // Listeners en tiempo real
       onSnapshot(docRef, (s) => {
         if (!s.exists()) return;
         const d = s.data();
@@ -206,7 +214,6 @@
       });
     })();
 
-    // Helpers de guardado (usan docRef cuando ya está listo)
     async function guardarPuntajes() {
       if (!docRef) return;
       await setDoc(docRef, { puntajes }, { merge: true });
@@ -216,7 +223,6 @@
       await setDoc(docRef, { historial }, { merge: true });
     }
 
-    // ====== Lógica de negocio ======
     function registrarFalta(event) {
       event.preventDefault();
       const alumno = document.getElementById("alumno").value;
@@ -235,6 +241,7 @@
       document.querySelector("form").reset();
       alert("Falta registrada con éxito");
     }
+    window.registrarFalta = registrarFalta;
 
     function renderPuntajes() {
       const tbody = document.querySelector("#tablaPuntajes tbody");
@@ -302,6 +309,7 @@
       renderHistorial();
       renderPuntajes();
     }
+    window.editarRegistro = editarRegistro;
 
     function eliminarRegistro(index) {
       if (!confirm("¿Estás seguro de que deseas eliminar este registro?")) return;
@@ -316,8 +324,9 @@
       renderHistorial();
       renderPuntajes();
     }
+    window.eliminarRegistro = eliminarRegistro;
 
-    // Primer tab
+    // Tab inicial
     showTab("puntajes");
   </script>
 </body>
