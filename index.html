@@ -99,7 +99,8 @@
     <button onclick="logout()">Cerrar sesión</button>
   </nav>
 
-  <script>
+ <script type="module">
+
     const alumnos = ["Areli Flores Salinas", "Emilia Cárdenas Navarro", "Jose Raymundo Rivas Colin", "Juan Carlos Nuñez", "Ana Belén Ortiz Villeda", "Renzo Luces", "Milton Fabricio Aguirre Duarte", "Triana Huerta Torres Landa", "Mariana Piñera Barreda", "Bárbara Sánchez", "Luis Pablo Perez Torrescano", "Ximena Carrero", "Fernando Roman Geronimo", "Danae Jasel Botello Lopez", "Gabriela Lozano Pedroza", "Karla Lizbeth Pérez Morales", "Zeltzin Citlali Feregrino Velázquez", "Edgar Iván Lugo Meza", "Diego Ramirez Torres", "Victoria Martinez"];
     const faltas = {
       "No saber trazo montado y grabado (reincidente)": 3,
@@ -108,41 +109,75 @@
       "Falta sin aviso previo": 3
     };
 
-// --- Persistencia correcta ---
-// 1) Puntajes por defecto (10 c/u)
-const defaultPuntajes = alumnos.reduce((acc, nombre) => {
-  acc[nombre] = 10; 
-  return acc;
-}, {});
+// ===== Firebase + Firestore =====
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js';
+import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js';
 
-// 2) Cargar desde localStorage SIN sobreescribir si ya existe
-let puntajes = JSON.parse(localStorage.getItem("puntajes")) || { ...defaultPuntajes };
-let historial = JSON.parse(localStorage.getItem("historial")) || [];
+// 1) Tu configuración real (reemplaza valores)
+const firebaseConfig = {
+  apiKey: "TU_API_KEY",
+  authDomain: "TU_AUTH_DOMAIN",
+  projectId: "sistema-de-puntos-ba2f9",
+  appId: "TU_APP_ID"
+};
 
-// 3) Sincronizar si cambia la lista de alumnos
-let changed = false;
-alumnos.forEach(nombre => {
-  if (!(nombre in puntajes)) { 
-    puntajes[nombre] = 10; 
-    changed = true; 
+// 2) Inicializar + auth anónima
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+await signInAnonymously(auth);
+
+// 3) Firestore: un solo documento compartido
+const db = getFirestore(app);
+const docRef = doc(db, 'grupos', 'default');
+
+// 4) Estado en memoria (se llenará desde Firestore)
+let puntajes = {};
+let historial = [];
+
+// 5) Carga inicial (si no existe, lo creamos vacío)
+{
+  const snap = await getDoc(docRef);
+  if (snap.exists()) {
+    const data = snap.data();
+    puntajes = data.puntajes || {};
+    historial = data.historial || [];
+  } else {
+    // sembrar con 10 puntos por alumno la primera vez
+    puntajes = alumnos.reduce((acc, n) => (acc[n] = 10, acc), {});
+    historial = [];
+    await setDoc(docRef, { puntajes, historial });
   }
-});
-Object.keys(puntajes).forEach(nombre => {
-  if (!alumnos.includes(nombre)) { 
-    delete puntajes[nombre]; 
-    changed = true; 
-  }
-});
 
-// 4) Guardar solo si es la primera vez o hubo cambios estructurales
-if (!localStorage.getItem("puntajes") || changed) {
-  localStorage.setItem("puntajes", JSON.stringify(puntajes));
-}
-if (!localStorage.getItem("historial")) {
-  localStorage.setItem("historial", JSON.stringify(historial));
+  // si agregaste/quitarte alumnos, sincroniza estructura y guarda
+  let changed = false;
+  alumnos.forEach(n => { if (!(n in puntajes)) { puntajes[n] = 10; changed = true; } });
+  Object.keys(puntajes).forEach(n => { if (!alumnos.includes(n)) { delete puntajes[n]; changed = true; } });
+  if (changed) await setDoc(docRef, { puntajes, historial }, { merge: true });
+
+  // primer render
+  renderPuntajes();
+  if (typeof renderHistorial === 'function') renderHistorial();
 }
 
-    let isAdmin = false;
+// 6) Tiempo real: cuando alguien cambie algo, actualiza todos
+onSnapshot(docRef, (snap) => {
+  if (!snap.exists()) return;
+  const data = snap.data();
+  puntajes = data.puntajes || {};
+  historial = data.historial || [];
+  renderPuntajes();
+  if (typeof renderHistorial === 'function') renderHistorial();
+});
+
+// 7) Helpers para guardar
+async function guardarPuntajes() {
+  await setDoc(docRef, { puntajes }, { merge: true });
+}
+async function guardarHistorial() {
+  await setDoc(docRef, { historial }, { merge: true });
+}
+
     let protectedTab = null;
 
     function showTab(tabId) {
@@ -180,25 +215,28 @@ if (!localStorage.getItem("historial")) {
       alert("Sesión cerrada.");
     }
 
-    function registrarFalta(event) {
-      event.preventDefault();
-      
-      const alumno = document.getElementById("alumno").value;
-      const falta = document.getElementById("falta").value;
-      const observaciones = document.getElementById("observaciones").value;
-      const puntos = faltas[falta];
-      const fechaInput = document.getElementById("fecha").value;
-      const fecha = fechaInput ? new Date(fechaInput).toLocaleDateString() : new Date().toLocaleDateString();
+function registrarFalta(event) {
+  event.preventDefault();
 
-      puntajes[alumno] -= puntos;
-      historial.push({ fecha, alumno, falta, puntos: -puntos, observaciones });
+  const alumno = document.getElementById("alumno").value;
+  const falta = document.getElementById("falta").value;
+  const observaciones = document.getElementById("observaciones").value;
+  const puntos = faltas[falta];
+  const fechaInput = document.getElementById("fecha").value;
+  const fecha = fechaInput ? new Date(fechaInput).toLocaleDateString() : new Date().toLocaleDateString();
 
-      localStorage.setItem("puntajes", JSON.stringify(puntajes));
-      localStorage.setItem("historial", JSON.stringify(historial));
+  // actualizar en memoria
+  puntajes[alumno] = (puntajes[alumno] ?? 10) - puntos;
+  historial.push({ fecha, alumno, falta, puntos: -puntos, observaciones });
 
-      document.querySelector("form").reset();
-      alert("Falta registrada con éxito");
-    }
+  // guardar en Firestore (no usar localStorage.setItem)
+  guardarPuntajes();
+  guardarHistorial();
+
+  document.querySelector("form").reset();
+  alert("Falta registrada con éxito");
+}
+
 
     function renderPuntajes() {
       const tbody = document.querySelector("#tablaPuntajes tbody");
@@ -257,32 +295,46 @@ if (!localStorage.getItem("historial")) {
       selectAlumno.appendChild(opt);
     });
 
-    renderPuntajes();
-      function editarRegistro(index) {
-      const reg = historial[index];
-      document.getElementById("fecha").value = new Date(reg.fecha).toISOString().split('T')[0];
-      document.getElementById("alumno").value = reg.alumno;
-      document.getElementById("falta").value = reg.falta;
-      document.getElementById("observaciones").value = reg.observaciones;
-      historial.splice(index, 1);
-      puntajes[reg.alumno] += Math.abs(reg.puntos);
-      localStorage.setItem("historial", JSON.stringify(historial));
-      localStorage.setItem("puntajes", JSON.stringify(puntajes));
-      renderHistorial();
-      renderPuntajes();
-    }
+function editarRegistro(index) {
+  const reg = historial[index];
 
-    function eliminarRegistro(index) {
-      if (confirm("¿Estás seguro de que deseas eliminar este registro?")) {
-        const reg = historial[index];
-        puntajes[reg.alumno] += Math.abs(reg.puntos);
-        historial.splice(index, 1);
-        localStorage.setItem("historial", JSON.stringify(historial));
-        localStorage.setItem("puntajes", JSON.stringify(puntajes));
-        renderHistorial();
-        renderPuntajes();
-      }
-    }
+  // reponer valores en el formulario
+  const iso = new Date(reg.fecha).toISOString().split('T')[0];
+  document.getElementById("fecha").value = iso;
+  document.getElementById("alumno").value = reg.alumno;
+  document.getElementById("falta").value = reg.falta;
+  document.getElementById("observaciones").value = reg.observaciones;
+
+  // revertir efecto en memoria y quitar del historial
+  puntajes[reg.alumno] += Math.abs(reg.puntos);
+  historial.splice(index, 1);
+
+  // guardar en Firestore
+  guardarPuntajes();
+  guardarHistorial();
+
+  renderHistorial();
+  renderPuntajes();
+}
+
+
+function eliminarRegistro(index) {
+  if (!confirm("¿Estás seguro de que deseas eliminar este registro?")) return;
+
+  const reg = historial[index];
+
+  // revertir puntaje y quitar del historial en memoria
+  puntajes[reg.alumno] += Math.abs(reg.puntos);
+  historial.splice(index, 1);
+
+  // guardar en Firestore
+  guardarPuntajes();
+  guardarHistorial();
+
+  renderHistorial();
+  renderPuntajes();
+}
+
 </script>
 </body>
 </html>
