@@ -104,7 +104,7 @@
 import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js';
 
-    const alumnos = ["Areli Flores Salinas", "Emilia Cárdenas Navarro", "Jose Raymundo Rivas Colin", "Juan Carlos Nuñez", "Ana Belén Ortiz Villeda", "Renzo Luces", "Milton Fabricio Aguirre Duarte", "Triana Huerta Torres Landa", "Mariana Piñera Barreda", "Bárbara Sánchez", "Luis Pablo Perez Torrescano", "Ximena Carrero", "Fernando Roman Geronimo", "Danae Jasel Botello Lopez", "Gabriela Lozano Pedroza", "Karla Lizbeth Pérez Morales", "Zeltzin Citlali Feregrino Velázquez", "Edgar Iván Lugo Meza", "Diego Ramirez Torres", "Victoria Martinez"];
+    const alumnos = ["Areli Flores Salinas", "Emilia Cárdenas Navarro", "Jose Raymundo Rivas Colin", "Juan Carlos Nuñez", "Ana Belén Ortiz Villeda", "Renzo Luces", "Milton Fabricio Aguirre Duarte", "Triana Huerta Torres Landa", "Mariana Piñera Barreda", "Bárbara Sánchez", "Luis Pablo Perez Torrescano", "Ximena Carrero", "Fernando Roman Geronimo", "Danae Jasel Botello Lopez", "Gabriela Lozano Pedroza", "Karla Lizbeth Pérez Morales", "Zeltzin Citlali Feregrino Velázquez", "Paola Mendiola de Jesús", "Edgar Iván Lugo Meza", "Diego Ramirez Torres", "Victoria Martinez"];
     const faltas = {
       "No saber trazo montado y grabado (reincidente)": 3,
       "Retardo (tolerancia 15 min)": 1,
